@@ -9,104 +9,91 @@ st.set_page_config(page_title="Advanced Statistics & Probability", layout="wide"
 def plot_dist(dist, crit, test_stat=None, df=None, title="", x_center=None, error_val=None, tail="Two-Tailed (≠)"):
     fig, ax = plt.subplots(figsize=(13, 5))
 
-    # --- Dynamic Range ---
-    if dist == "Z":
-        center = test_stat if test_stat is not None else 0
-        x = np.linspace(center - 5, center + 5, 3000)
-        y = stats.norm.pdf(x)
+    y = None  # حماية من الخطأ
 
-    elif dist == "T":
-        center = test_stat if test_stat is not None else 0
-        x = np.linspace(center - 5, center + 5, 3000)
-        y = stats.t.pdf(x, df)
+    # --- 1. Confidence Interval ---
+    if x_center is not None and error_val is not None:
+        low, high = x_center - error_val, x_center + error_val
+        std_plot = error_val / (crit if crit != 0 else 1.96)
 
-    else:  # Chi
-        upper = stats.chi2.ppf(0.999, df)
-        x = np.linspace(0, upper, 3000)
+        x = np.linspace(x_center - 4*std_plot, x_center + 4*std_plot, 1000)
+
+        if dist == "Z":
+            y = stats.norm.pdf(x, loc=x_center, scale=std_plot)
+        else:
+            y = stats.t.pdf(x, df, loc=x_center, scale=std_plot)
+
+        ax.plot(x, y, linewidth=3)
+        ax.fill_between(x, y, where=(x >= low) & (x <= high), alpha=0.2)
+
+        ax.axvline(low, linestyle='--')
+        ax.axvline(high, linestyle='--')
+
+        ax.text(low, max(y)*1.02, f"{low:.2f}", ha='center')
+        ax.text(high, max(y)*1.02, f"{high:.2f}", ha='center')
+
+    # --- 2. Hypothesis Testing ---
+    elif test_stat is not None:
+        if dist == "Chi":
+            upper = max(stats.chi2.ppf(0.99, df), test_stat * 1.2)
+            x = np.linspace(0, upper, 1000)
+            y = stats.chi2.pdf(x, df)
+        else:
+            limit = max(abs(test_stat), abs(crit if isinstance(crit, float) else max(crit)), 4) + 1
+            x = np.linspace(-limit, limit, 1000)
+
+            if dist == "Z":
+                y = stats.norm.pdf(x)
+            else:
+                y = stats.t.pdf(x, df)
+
+        ax.plot(x, y, linewidth=3)
+
+        if dist != "Chi":
+            if "Two" in tail:
+                ax.fill_between(x, y, where=(x < -crit) | (x > crit), alpha=0.4)
+                ax.axvline(crit, linestyle='--')
+                ax.axvline(-crit, linestyle='--')
+            elif "Right" in tail:
+                ax.fill_between(x, y, where=(x > crit), alpha=0.4)
+                ax.axvline(crit, linestyle='--')
+            elif "Left" in tail:
+                ax.fill_between(x, y, where=(x < -crit), alpha=0.4)
+                ax.axvline(-crit, linestyle='--')
+
+        ax.axvline(test_stat, linewidth=3)
+        ax.text(test_stat, max(y)*1.1, f"TS: {test_stat:.2f}", ha='center')
+
+    # --- 3. Chi-Square Interval (FIX 🔥) ---
+    elif dist == "Chi" and isinstance(crit, list):
+        lower, upper = crit
+
+        x = np.linspace(0, upper * 1.5, 1000)
         y = stats.chi2.pdf(x, df)
 
-    # رسم المنحنى
-    ax.plot(x, y, color='#1f77b4', linewidth=3)
+        ax.plot(x, y, linewidth=3)
 
-    # --- Rejection & Acceptance ---
-    if dist != "Chi":
-        if "Two" in tail:
-            # Rejection
-            ax.fill_between(x, y, where=(x < -crit), color='#ff4d4d', alpha=0.4)
-            ax.fill_between(x, y, where=(x > crit), color='#ff4d4d', alpha=0.4)
+        ax.fill_between(x, y, where=(x >= lower) & (x <= upper), alpha=0.2)
 
-            # Acceptance
-            ax.fill_between(x, y, where=(x >= -crit) & (x <= crit), color='#4CAF50', alpha=0.3)
+        ax.axvline(lower, linestyle='--')
+        ax.axvline(upper, linestyle='--')
 
-            ax.axvline(crit, color='black', linestyle='--', linewidth=2)
-            ax.axvline(-crit, color='black', linestyle='--', linewidth=2)
+        ax.text(lower, max(y)*1.02, f"{lower:.2f}", ha='center')
+        ax.text(upper, max(y)*1.02, f"{upper:.2f}", ha='center')
 
-            ax.text(crit, max(y)*0.9, f"+{crit:.2f}", ha='center', fontweight='bold')
-            ax.text(-crit, max(y)*0.9, f"{-crit:.2f}", ha='center', fontweight='bold')
+    # --- حماية نهائية ---
+    if y is None:
+        return
 
-        elif "Right" in tail:
-            ax.fill_between(x, y, where=(x > crit), color='#ff4d4d', alpha=0.4)
-            ax.fill_between(x, y, where=(x <= crit), color='#4CAF50', alpha=0.3)
-
-            ax.axvline(crit, color='black', linestyle='--', linewidth=2)
-            ax.text(crit, max(y)*0.9, f"{crit:.2f}", ha='center', fontweight='bold')
-
-        elif "Left" in tail:
-            ax.fill_between(x, y, where=(x < -crit), color='#ff4d4d', alpha=0.4)
-            ax.fill_between(x, y, where=(x >= -crit), color='#4CAF50', alpha=0.3)
-
-            ax.axvline(-crit, color='black', linestyle='--', linewidth=2)
-            ax.text(-crit, max(y)*0.9, f"{-crit:.2f}", ha='center', fontweight='bold')
-
-    else:
-        if isinstance(crit, list):
-            ax.fill_between(x, y, where=(x < crit[0]), color='#ff4d4d', alpha=0.4)
-            ax.fill_between(x, y, where=(x > crit[1]), color='#ff4d4d', alpha=0.4)
-            ax.fill_between(x, y, where=(x >= crit[0]) & (x <= crit[1]), color='#4CAF50', alpha=0.3)
-
-            ax.axvline(crit[0], color='black', linestyle='--', linewidth=2)
-            ax.axvline(crit[1], color='black', linestyle='--', linewidth=2)
-
-            ax.text(crit[0], max(y)*0.9, f"{crit[0]:.2f}", ha='center', fontweight='bold')
-            ax.text(crit[1], max(y)*0.9, f"{crit[1]:.2f}", ha='center', fontweight='bold')
-
-        else:
-            ax.fill_between(x, y, where=(x > crit), color='#ff4d4d', alpha=0.4)
-            ax.fill_between(x, y, where=(x <= crit), color='#4CAF50', alpha=0.3)
-
-            ax.axvline(crit, color='black', linestyle='--', linewidth=2)
-            ax.text(crit, max(y)*0.9, f"{crit:.2f}", ha='center', fontweight='bold')
-
-    # --- Test Statistic ---
-    if test_stat is not None:
-        ax.axvline(test_stat, color='#000000', linewidth=3)
-
-        ax.annotate(f"{test_stat:.2f}",
-                    xy=(test_stat, max(y)*0.6),
-                    xytext=(test_stat, max(y)*0.85),
-                    arrowprops=dict(facecolor='black', width=2),
-                    ha='center', fontweight='bold')
-
-    # --- Confidence Interval ---
-    if x_center is not None and error_val is not None:
-        left = x_center - error_val
-        right = x_center + error_val
-
-        ax.axvline(left, color='#555', linestyle=':', linewidth=2)
-        ax.axvline(right, color='#555', linestyle=':', linewidth=2)
-
-        ax.text(left, max(y)*0.95, f"{left:.2f}", ha='center', fontweight='bold')
-        ax.text(right, max(y)*0.95, f"{right:.2f}", ha='center', fontweight='bold')
-
-    # --- Final Styling ---
-    ax.set_title(f"{dist} Distribution", fontsize=14, pad=15)
+    # --- الشكل ---
+    ax.set_yticks([])
     ax.spines['top'].set_visible(False)
     ax.spines['right'].set_visible(False)
     ax.spines['left'].set_visible(False)
-    ax.set_yticks([])
+
+    ax.set_ylim(0, max(y)*1.25)
 
     st.pyplot(fig)
-
 # --- بقية الكود كما هو بدون تعديل في المنطق ---
 
 def handle_raw_data(key_suffix):
@@ -251,8 +238,8 @@ def main():
                 elif "Right" in tail: reject = stat > cr
                 else: reject = stat < -cr if dist != "Chi" else stat < stats.chi2.ppf(alpha, n_t-1)
                 
-                if reject: st.error("**Decision: Reject H0**")
-                else: st.success("**Decision: Fail to Reject H0**")
+                if reject: st.error("**Decision: Reject H0 (Significant)**")
+                else: st.success("**Decision: Accept H0 (Not Significant)**")
                 
                 plot_dist(dist, cr if dist != "Chi" else [0, cr], test_stat=stat, df=n_t-1, tail=tail)
 
